@@ -23,7 +23,7 @@ final class MediaFileHandle {
         if !FileManager.default.fileExists(atPath: filePath) {
             FileManager.default.createFile(atPath: filePath, contents: nil, attributes: nil)
         } else {
-            print("CachingPlayerItem warning: File already exists at \(filePath). A non empty file can cause unexpected behavior.")
+            AppLogger.warning("File already exists at \(filePath). A non empty file can cause unexpected behavior.")
         }
     }
 
@@ -47,7 +47,7 @@ extension MediaFileHandle {
         do {
             return try FileManager.default.attributesOfItem(atPath: filePath)
         } catch let error as NSError {
-            print("FileAttribute error: \(error)")
+            AppLogger.error("Failed fetching attributes for \(filePath) with error: \(error)")
         }
         return nil
     }
@@ -92,7 +92,7 @@ extension MediaFileHandle {
         do {
             try FileManager.default.removeItem(atPath: filePath)
         } catch let error {
-            print("File deletion error: \(error)")
+            AppLogger.error("File deletion failed at \(filePath) with error: \(error)")
         }
     }
 }
