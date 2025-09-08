@@ -24,6 +24,9 @@ public enum CachingPlayerItemConfiguration {
 
     /// Flag for deciding whether an `NSFileWriteOutOfSpaceError` should be thrown when there is not enough available disk space left for caching the entire media file. Defaults to `true`.
     public static var shouldCheckAvailableDiskSpaceBeforeCaching: Bool = true
+
+    /// Log level. Defaults to `none`.
+    public static var logLevel: LogLevel = .none
 }
 
 fileprivate extension Int {

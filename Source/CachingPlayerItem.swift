@@ -47,6 +47,7 @@ public final class CachingPlayerItem: AVPlayerItem {
 
     /// Useful for keeping relevant model associated with CachingPlayerItem instance. This is a **strong** reference, be mindful not to create a **retain cycle**.
     public var passOnObject: Any?
+    /// `delegate` for status updates.
     public weak var delegate: CachingPlayerItemDelegate?
 
     // MARK: Public init
@@ -276,14 +277,15 @@ public final class CachingPlayerItem: AVPlayerItem {
         switch status {
         case .readyToPlay:
             // Player item is ready to play.
+            AppLogger.info("CachingPlayerItem status: ready to play")
             DispatchQueue.main.async { self.delegate?.playerItemReadyToPlay?(self) }
         case .failed:
             // Player item failed. See error.
-            print("CachingPlayerItem status: failed with error: \(String(describing: error))")
+            AppLogger.error("CachingPlayerItem status: failed with error: \(String(describing: error))")
             DispatchQueue.main.async { self.delegate?.playerItemDidFailToPlay?(self, withError: self.error) }
         case .unknown:
             // Player item is not yet ready.
-            print("CachingPlayerItem status: uknown with error: \(String(describing: error))")
+            AppLogger.error("CachingPlayerItem status: uknown with error: \(String(describing: error))")
         @unknown default:
             break
         }
