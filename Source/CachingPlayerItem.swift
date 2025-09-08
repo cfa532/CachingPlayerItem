@@ -47,6 +47,7 @@ public final class CachingPlayerItem: AVPlayerItem {
 
     /// Useful for keeping relevant model associated with CachingPlayerItem instance. This is a **strong** reference, be mindful not to create a **retain cycle**.
     public var passOnObject: Any?
+    /// `delegate` for status updates.
     public weak var delegate: CachingPlayerItemDelegate?
 
     // MARK: Public init
