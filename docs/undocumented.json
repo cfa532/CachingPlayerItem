@@ -1,15 +1,36 @@
 {
   "warnings": [
     {
-      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/CachingPlayerItem.swift",
-      "line": 50,
-      "symbol": "CachingPlayerItem.delegate",
-      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 12,
+      "symbol": "LogLevel.none",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 13,
+      "symbol": "LogLevel.info",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 14,
+      "symbol": "LogLevel.warning",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 15,
+      "symbol": "LogLevel.error",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
       "warning": "undocumented"
     },
     {
       "file": "/Users/shukov/Projects/CachingPlayerItem/Source/CachingPlayerItem.swift",
-      "line": 251,
+      "line": 252,
       "symbol": "CachingPlayerItem.observeValue(forKeyPath:of:change:context:)",
       "symbol_kind": "source.lang.swift.decl.function.method.instance",
       "warning": "undocumented"

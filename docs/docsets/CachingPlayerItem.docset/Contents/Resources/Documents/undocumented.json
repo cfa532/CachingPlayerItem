@@ -1,6 +1,41 @@
 {
   "warnings": [
     {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 10,
+      "symbol": "LogLevel",
+      "symbol_kind": "source.lang.swift.decl.enum",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 11,
+      "symbol": "LogLevel.none",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 12,
+      "symbol": "LogLevel.info",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 13,
+      "symbol": "LogLevel.warning",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/Users/shukov/Projects/CachingPlayerItem/Source/AppLogger.swift",
+      "line": 14,
+      "symbol": "LogLevel.error",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
       "file": "/Users/shukov/Projects/CachingPlayerItem/Source/CachingPlayerItem.swift",
       "line": 50,
       "symbol": "CachingPlayerItem.delegate",
