@@ -2,8 +2,8 @@ import Foundation
 import Network
 
 /// Local HTTP server to serve cached HLS content with proper HTTP responses
-public final class LocalHTTPServer: @unchecked Sendable {
-    public static let shared = LocalHTTPServer()
+class LocalHTTPServer {
+    static let shared = LocalHTTPServer()
     
     private let queue = DispatchQueue(label: "LocalHTTPServer", qos: .userInitiated)
     private var listener: NWListener?
@@ -19,7 +19,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
     private init() {}
     
     /// Start the HTTP server
-    public func start() {
+    func start() {
         guard !isRunning else { return }
         
         // Find an available port
@@ -56,15 +56,15 @@ public final class LocalHTTPServer: @unchecked Sendable {
     }
     
     /// Register a media ID with its cache path
-    public func registerMedia(mediaID: String, cachePath: String) {
+    func registerMedia(mediaID: String, cachePath: String) {
         mediaPaths[mediaID] = cachePath
         print("DEBUG: [LocalHTTPServer] Registered media \(mediaID) at path \(cachePath)")
     }
     
     /// Get the local URL for a media ID
-    public func getLocalURL(for mediaID: String) -> URL? {
+    func getLocalURL(for mediaID: String) -> URL? {
         guard isRunning else { return nil }
-        return URL(string: "http://localhost:\(port)/media/\(mediaID)/")
+        return URL(string: "http://localhost:\(port)/media/\(mediaID)")
     }
     
     /// Find an available port starting from 8080
@@ -296,7 +296,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
         } else if path.hasSuffix(".ts") || path.hasSuffix(".m4s") {
             // HLS segment request
             let segmentName = String(path.split(separator: "/").last ?? "")
-            let segmentsPath = hlsSegmentsPath(for: mediaID)
+            let segmentsPath = CachingPlayerItem.hlsSegmentsPath(for: mediaID)
             filePath = "\(segmentsPath)/\(segmentName)"
             contentType = "video/mp2t"
         } else {
@@ -375,7 +375,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
                 let data = try await downloadData(from: URL(string: originalURL)!)
                 
                 // Create the file path for the sub-playlist
-                let segmentsPath = hlsSegmentsPath(for: mediaID)
+                let segmentsPath = CachingPlayerItem.hlsSegmentsPath(for: mediaID)
                 let subPlaylistPath = "\(segmentsPath)/\(resolution)/playlist.m3u8"
                 
                 // Ensure directory exists
@@ -420,7 +420,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
                 let data = try await downloadData(from: tsSegmentURL)
                 
                 // Save the file
-                let segmentsPath = hlsSegmentsPath(for: mediaID)
+                let segmentsPath = CachingPlayerItem.hlsSegmentsPath(for: mediaID)
                 let segmentPath = "\(segmentsPath)/\(resolution)/\(segmentName)"
                 let fileURL = URL(fileURLWithPath: segmentPath)
                 
@@ -615,12 +615,5 @@ public final class LocalHTTPServer: @unchecked Sendable {
             }
             connection.cancel()
         })
-    }
-    
-    /// Generates a file path for HLS segments in caches directory.
-    private func hlsSegmentsPath(for mediaID: String) -> String {
-        let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        let segmentsDirectory = cachesDirectory.appendingPathComponent("HLS_Segments").appendingPathComponent(mediaID)
-        return segmentsDirectory.path
     }
 }

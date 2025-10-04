@@ -146,16 +146,15 @@ public final class CachingPlayerItem: AVPlayerItem {
         self.isHLS = isHLS
         self.mediaID = mediaID
 
-        // For HLS videos, use the local HTTP server URL instead of custom scheme
+        // For HLS videos, use a custom scheme that will be handled by ResourceLoaderDelegate
         let finalURL: URL
         if isHLS, let mediaID = mediaID {
-            // Use local HTTP server URL for HLS
-            if let localURL = LocalHTTPServer.shared.getLocalURL(for: mediaID) {
-                finalURL = localURL
-                print("DEBUG: [CachingPlayerItem] Using local HTTP server URL: \(localURL.absoluteString)")
-            } else {
-                fatalError("CachingPlayerItem error: Failed to get local HTTP server URL")
+            // Use custom scheme for HLS - ResourceLoaderDelegate will handle the download and serve from local server
+            guard var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
+                fatalError("CachingPlayerItem error: Failed to create custom scheme URL")
             }
+            finalURL = urlWithCustomScheme
+            print("DEBUG: [CachingPlayerItem] Using custom scheme URL for HLS: \(finalURL.absoluteString)")
         } else {
             // For progressive videos, use custom scheme
             guard var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
@@ -180,14 +179,9 @@ public final class CachingPlayerItem: AVPlayerItem {
         let asset = AVURLAsset(url: finalURL, options: avUrlAssetOptions)
         super.init(asset: asset, automaticallyLoadedAssetKeys: nil)
 
-        // Initialize resource loader delegate for progressive videos
-        if !isHLS {
-            resourceLoaderDelegate = ResourceLoaderDelegate(url: url, saveFilePath: saveFilePath, owner: self, isHLS: isHLS, mediaID: mediaID)
+        // Initialize resource loader delegate for all caching scenarios
+        resourceLoaderDelegate = ResourceLoaderDelegate(url: url, saveFilePath: saveFilePath, owner: self, isHLS: isHLS, mediaID: mediaID)
         asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
-        } else if isHLS, let _ = mediaID {
-            // For HLS with HTTP server, start downloading and caching the content
-            startHLSDownloadAndCaching()
-        }
 
         addObservers()
     }
@@ -324,228 +318,6 @@ public final class CachingPlayerItem: AVPlayerItem {
         resourceLoaderDelegate?.invalidateAndCancelSession()
     }
     
-    // MARK: HLS HTTP Server Support
-    
-    /// Start downloading and caching HLS content for HTTP server approach
-    private func startHLSDownloadAndCaching() {
-        guard isHLS, let mediaID = mediaID else { return }
-        
-        print("DEBUG: [CachingPlayerItem] Starting HLS download and caching for mediaID: \(mediaID)")
-        
-        // Start downloading the master playlist directly without using ResourceLoaderDelegate
-        let task = Task<Void, Never> { [weak self] in
-            guard let self = self else { return }
-            await self.downloadHLSContent()
-        }
-        activeTasks.insert(task)
-        
-        // Don't create a separate cleanup task - let deinit handle cleanup
-        // The task will be removed from activeTasks in deinit when the instance is deallocated
-    }
-    
-    /// Download HLS content asynchronously
-    private func downloadHLSContent() async {
-        guard let mediaID = mediaID else { return }
-        
-        do {
-            // Resolve the HLS URL (master.m3u8 or playlist.m3u8)
-            let resolvedURL = await resolveHLSURL(url)
-            print("DEBUG: [CachingPlayerItem] Resolved HLS URL: \(resolvedURL.absoluteString)")
-            
-            // Download the master playlist
-            let playlistData = try await downloadData(from: resolvedURL)
-            
-            // Modify the playlist to include mediaID in sub-playlist URLs
-            let modifiedPlaylistData = try modifyPlaylistForLocalServer(playlistData: playlistData, mediaID: mediaID)
-            
-            let playlistPath = saveFilePath
-            try modifiedPlaylistData.write(to: URL(fileURLWithPath: playlistPath))
-            print("DEBUG: [CachingPlayerItem] Downloaded and modified master playlist to: \(playlistPath)")
-            
-            // Parse and download segments
-            await downloadHLSSegments(playlistData: playlistData, baseURL: resolvedURL, mediaID: mediaID)
-            
-        } catch {
-            print("DEBUG: [CachingPlayerItem] Failed to download HLS content: \(error)")
-            // Don't use weak self here to avoid weak reference crash
-            // The delegate callback is optional and can be safely skipped if self is deallocated
-        }
-    }
-    
-    /// Modify playlist content to include mediaID in sub-playlist URLs for local server
-    private func modifyPlaylistForLocalServer(playlistData: Data, mediaID: String) throws -> Data {
-        guard let playlistContent = String(data: playlistData, encoding: .utf8) else {
-            throw NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse playlist content"])
-        }
-        
-        let lines = playlistContent.components(separatedBy: .newlines)
-        var modifiedLines: [String] = []
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // Check if this line contains a sub-playlist URL (ends with .m3u8 and doesn't start with http)
-            if trimmedLine.hasSuffix(".m3u8") && !trimmedLine.hasPrefix("http") {
-                // This is a relative sub-playlist URL, modify it to include mediaID
-                let modifiedURL = "/media/\(mediaID)/\(trimmedLine)"
-                modifiedLines.append(modifiedURL)
-                print("DEBUG: [CachingPlayerItem] Modified sub-playlist URL: \(trimmedLine) -> \(modifiedURL)")
-            } else {
-                // Keep other lines unchanged
-                modifiedLines.append(line)
-            }
-        }
-        
-        let modifiedContent = modifiedLines.joined(separator: "\n")
-        guard let modifiedData = modifiedContent.data(using: .utf8) else {
-            throw NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode modified playlist content"])
-        }
-        
-        return modifiedData
-    }
-    
-    /// Download HLS segments from playlist
-    private func downloadHLSSegments(playlistData: Data, baseURL: URL, mediaID: String) async {
-        guard let playlistContent = String(data: playlistData, encoding: .utf8) else {
-            print("DEBUG: [CachingPlayerItem] Failed to parse playlist content")
-            return
-        }
-        
-        let lines = playlistContent.components(separatedBy: .newlines)
-        let segmentsPath = Self.hlsSegmentsPath(for: mediaID)
-        
-        // Create segments directory
-        try? FileManager.default.createDirectory(atPath: segmentsPath, withIntermediateDirectories: true)
-        
-        var segmentTasks: [Task<Void, Error>] = []
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // Skip comments and empty lines
-            if trimmedLine.isEmpty || trimmedLine.hasPrefix("#") {
-                continue
-            }
-            
-            // This is a segment URL
-            let segmentURL: URL
-            if trimmedLine.hasPrefix("http") {
-                // Absolute URL
-                segmentURL = URL(string: trimmedLine)!
-            } else {
-                // Relative URL
-                segmentURL = baseURL.deletingLastPathComponent().appendingPathComponent(trimmedLine)
-            }
-            
-            let task = Task<Void, Error> {
-                do {
-                    // Use URLSession directly instead of self?.downloadData to avoid weak reference
-                    let segmentData = try await Self.downloadDataDirectly(from: segmentURL)
-                    let segmentName = segmentURL.lastPathComponent
-                    let segmentPath = "\(segmentsPath)/\(segmentName)"
-                    try segmentData.write(to: URL(fileURLWithPath: segmentPath))
-                    print("DEBUG: [CachingPlayerItem] Downloaded segment: \(segmentName)")
-                } catch {
-                    print("DEBUG: [CachingPlayerItem] Failed to download segment \(segmentURL.absoluteString): \(error)")
-                    throw error
-                }
-            }
-            
-            // Create a wrapper task for tracking
-            var trackingTask: Task<Void, Never>!
-            trackingTask = Task<Void, Never> {
-                do {
-                    try await task.value
-                } catch {
-                    // Error already logged in the main task
-                }
-                // Don't try to remove task here - let deinit handle cleanup
-                // This avoids the weak reference crash when self is being deallocated
-            }
-            activeTasks.insert(trackingTask)
-            
-            segmentTasks.append(task)
-        }
-        
-        // Wait for all segments to download
-        for task in segmentTasks {
-            do {
-                try await task.value
-            } catch {
-                print("DEBUG: [CachingPlayerItem] Segment download failed: \(error)")
-            }
-        }
-        
-        print("DEBUG: [CachingPlayerItem] Completed HLS download and caching for mediaID: \(mediaID)")
-    }
-    
-    /// Download data from URL
-    private func downloadData(from url: URL) async throws -> Data {
-        return try await withCheckedThrowingContinuation { continuation in
-            let task = URLSession.shared.dataTask(with: url) { data, response, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: URLError(.badServerResponse))
-                }
-            }
-            task.resume()
-        }
-    }
-    
-    /// Static version of downloadData that doesn't require self
-    private static func downloadDataDirectly(from url: URL) async throws -> Data {
-        return try await withCheckedThrowingContinuation { continuation in
-            let task = URLSession.shared.dataTask(with: url) { data, response, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                } else if let data = data {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: URLError(.badServerResponse))
-                }
-            }
-            task.resume()
-        }
-    }
-    
-    /// Resolve HLS URL (master.m3u8 -> playlist.m3u8 -> fail)
-    private func resolveHLSURL(_ baseURL: URL) async -> URL {
-        // Try master.m3u8 first
-        let masterURL = baseURL.appendingPathComponent("master.m3u8")
-        if await urlExists(masterURL) {
-            print("DEBUG: [CachingPlayerItem] Found master.m3u8 at: \(masterURL.absoluteString)")
-            return masterURL
-        }
-        
-        // Try playlist.m3u8
-        let playlistURL = baseURL.appendingPathComponent("playlist.m3u8")
-        if await urlExists(playlistURL) {
-            print("DEBUG: [CachingPlayerItem] Found playlist.m3u8 at: \(playlistURL.absoluteString)")
-            return playlistURL
-        }
-        
-        // If neither exists, return the original URL (will fail gracefully)
-        print("DEBUG: [CachingPlayerItem] No HLS playlist found, using original URL")
-        return baseURL
-    }
-    
-    /// Check if URL exists
-    private func urlExists(_ url: URL) async -> Bool {
-        return await withCheckedContinuation { continuation in
-            var request = URLRequest(url: url)
-            request.httpMethod = "HEAD"
-            request.timeoutInterval = 5.0
-            
-            let task = URLSession.shared.dataTask(with: request) { _, response, _ in
-                let exists = (response as? HTTPURLResponse)?.statusCode == 200
-                continuation.resume(returning: exists)
-            }
-            task.resume()
-        }
-    }
 
     // MARK: KVO
 
