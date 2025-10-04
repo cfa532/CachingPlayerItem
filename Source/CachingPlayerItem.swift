@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import Network
 
 /// Convenient delegate methods for `CachingPlayerItem` status updates.
 @objc public protocol CachingPlayerItemDelegate {
@@ -37,11 +38,13 @@ import AVFoundation
 public final class CachingPlayerItem: AVPlayerItem {
     private let cachingPlayerItemScheme = "cachingPlayerItemScheme"
 
-    private lazy var resourceLoaderDelegate = ResourceLoaderDelegate(url: url, saveFilePath: saveFilePath, owner: self)
+    private lazy var resourceLoaderDelegate = ResourceLoaderDelegate(url: url, saveFilePath: saveFilePath, owner: self, isHLS: isHLS, mediaID: mediaID)
     private let url: URL
     private let initialScheme: String?
     private let saveFilePath: String
     private var customFileExtension: String?
+    private let isHLS: Bool
+    private let mediaID: String?
     /// HTTPHeaderFields set in avUrlAssetOptions using AVURLAssetHTTPHeaderFieldsKey
     internal var urlRequestHeaders: [String: String]?
 
@@ -98,36 +101,85 @@ public final class CachingPlayerItem: AVPlayerItem {
 
      - parameter avUrlAssetOptions: A dictionary that contains options used to customize the initialization of the asset. For supported keys and values,
      see [Initialization Options.](https://developer.apple.com/documentation/avfoundation/avurlasset/initialization_options)
+     
+     - parameter isHLS: Whether this is an HLS video that needs special handling.
+     - parameter mediaID: Unique identifier for the media (used for HLS segment caching).
      */
-    public init(url: URL, saveFilePath: String, customFileExtension: String?, avUrlAssetOptions: [String: Any]? = nil) {
+    public init(url: URL, saveFilePath: String, customFileExtension: String?, avUrlAssetOptions: [String: Any]? = nil, isHLS: Bool = false, mediaID: String? = nil) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let scheme = components.scheme,
-              var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
+              let scheme = components.scheme else {
             fatalError("CachingPlayerItem error: Urls without a scheme are not supported")
         }
 
         self.url = url
         self.saveFilePath = saveFilePath
         self.initialScheme = scheme
+        self.isHLS = isHLS
+        self.mediaID = mediaID
 
-        if let ext = customFileExtension {
-            urlWithCustomScheme.deletePathExtension()
-            urlWithCustomScheme.appendPathExtension(ext)
-            self.customFileExtension = ext
-        }  else {
-            assert(url.pathExtension.isEmpty == false, "CachingPlayerItem error: url pathExtension empty, pass the extension in `customFileExtension` parameter")
+        // For HLS videos, use the local HTTP server URL instead of custom scheme
+        let finalURL: URL
+        if isHLS, let mediaID = mediaID {
+            // Use local HTTP server URL for HLS
+            if let localURL = LocalHTTPServer.shared.getLocalURL(for: mediaID) {
+                finalURL = localURL
+                print("DEBUG: [CachingPlayerItem] Using local HTTP server URL: \(localURL.absoluteString)")
+            } else {
+                fatalError("CachingPlayerItem error: Failed to get local HTTP server URL")
+            }
+        } else {
+            // For progressive videos, use custom scheme
+            guard var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
+                fatalError("CachingPlayerItem error: Failed to create custom scheme URL")
+            }
+            
+            if let ext = customFileExtension {
+                urlWithCustomScheme.deletePathExtension()
+                urlWithCustomScheme.appendPathExtension(ext)
+                self.customFileExtension = ext
+            } else {
+                assert(url.pathExtension.isEmpty == false, "CachingPlayerItem error: url pathExtension empty, pass the extension in `customFileExtension` parameter")
+            }
+            
+            finalURL = urlWithCustomScheme
         }
 
         if let headers = avUrlAssetOptions?["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String] {
             self.urlRequestHeaders = headers
         }
 
-        let asset = AVURLAsset(url: urlWithCustomScheme, options: avUrlAssetOptions)
+        let asset = AVURLAsset(url: finalURL, options: avUrlAssetOptions)
         super.init(asset: asset, automaticallyLoadedAssetKeys: nil)
 
-        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
+        // Only set resource loader delegate for progressive videos (not HLS with HTTP server)
+        if !isHLS {
+            asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
+        } else if isHLS, let _ = mediaID {
+            // For HLS with HTTP server, start downloading and caching the content
+            startHLSDownloadAndCaching()
+        }
 
         addObservers()
+    }
+
+    /**
+     Play and cache HLS media (M3U8 playlists with TS segments).
+
+     - parameter hlsURL: URL referencing the HLS playlist file (.m3u8).
+     - parameter mediaID: Unique identifier for the media (used for cache key).
+     - parameter avUrlAssetOptions: A dictionary that contains options used to customize the initialization of the asset.
+     */
+    public convenience init(hlsURL: URL, mediaID: String, avUrlAssetOptions: [String: Any]? = nil) {
+        // Start the local HTTP server if not already running
+        LocalHTTPServer.shared.start()
+        
+        // Create a unique save path for the HLS playlist
+        let savePath = Self.hlsPlaylistPath(for: mediaID)
+        
+        // Register this media with the HTTP server
+        LocalHTTPServer.shared.registerMedia(mediaID: mediaID, cachePath: savePath)
+        
+        self.init(url: hlsURL, saveFilePath: savePath, customFileExtension: "m3u8", avUrlAssetOptions: avUrlAssetOptions, isHLS: true, mediaID: mediaID)
     }
 
     /**
@@ -142,6 +194,8 @@ public final class CachingPlayerItem: AVPlayerItem {
         self.url = url
         self.saveFilePath = ""
         self.initialScheme = nil
+        self.isHLS = false
+        self.mediaID = nil
 
         let asset = AVURLAsset(url: url, options: avUrlAssetOptions)
         super.init(asset: asset, automaticallyLoadedAssetKeys: nil)
@@ -190,6 +244,8 @@ public final class CachingPlayerItem: AVPlayerItem {
         // Not needed properties when playing media from a local file.
         self.saveFilePath = ""
         self.initialScheme = nil
+        self.isHLS = false
+        self.mediaID = nil
 
         super.init(asset: AVURLAsset(url: url), automaticallyLoadedAssetKeys: nil)
 
@@ -206,6 +262,8 @@ public final class CachingPlayerItem: AVPlayerItem {
         self.url = URL(fileURLWithPath: "")
         self.initialScheme = nil
         self.saveFilePath = ""
+        self.isHLS = false
+        self.mediaID = nil
         super.init(asset: asset, automaticallyLoadedAssetKeys: automaticallyLoadedAssetKeys)
 
         addObservers()
@@ -243,6 +301,159 @@ public final class CachingPlayerItem: AVPlayerItem {
         }
 
         resourceLoaderDelegate.invalidateAndCancelSession()
+    }
+    
+    // MARK: HLS HTTP Server Support
+    
+    /// Start downloading and caching HLS content for HTTP server approach
+    private func startHLSDownloadAndCaching() {
+        guard isHLS, let mediaID = mediaID else { return }
+        
+        print("DEBUG: [CachingPlayerItem] Starting HLS download and caching for mediaID: \(mediaID)")
+        
+        // Start downloading the master playlist directly without using ResourceLoaderDelegate
+        Task { [weak self] in
+            await self?.downloadHLSContent()
+        }
+    }
+    
+    /// Download HLS content asynchronously
+    private func downloadHLSContent() async {
+        guard let mediaID = mediaID else { return }
+        
+        do {
+            // Resolve the HLS URL (master.m3u8 or playlist.m3u8)
+            let resolvedURL = await resolveHLSURL(url)
+            print("DEBUG: [CachingPlayerItem] Resolved HLS URL: \(resolvedURL.absoluteString)")
+            
+            // Download the master playlist
+            let playlistData = try await downloadData(from: resolvedURL)
+            let playlistPath = saveFilePath
+            try playlistData.write(to: URL(fileURLWithPath: playlistPath))
+            print("DEBUG: [CachingPlayerItem] Downloaded master playlist to: \(playlistPath)")
+            
+            // Parse and download segments
+            await downloadHLSSegments(playlistData: playlistData, baseURL: resolvedURL, mediaID: mediaID)
+            
+        } catch {
+            print("DEBUG: [CachingPlayerItem] Failed to download HLS content: \(error)")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.delegate?.playerItem?(self, downloadingFailedWith: error)
+            }
+        }
+    }
+    
+    /// Download HLS segments from playlist
+    private func downloadHLSSegments(playlistData: Data, baseURL: URL, mediaID: String) async {
+        guard let playlistContent = String(data: playlistData, encoding: .utf8) else {
+            print("DEBUG: [CachingPlayerItem] Failed to parse playlist content")
+            return
+        }
+        
+        let lines = playlistContent.components(separatedBy: .newlines)
+        let segmentsPath = Self.hlsSegmentsPath(for: mediaID)
+        
+        // Create segments directory
+        try? FileManager.default.createDirectory(atPath: segmentsPath, withIntermediateDirectories: true)
+        
+        var segmentTasks: [Task<Void, Error>] = []
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Skip comments and empty lines
+            if trimmedLine.isEmpty || trimmedLine.hasPrefix("#") {
+                continue
+            }
+            
+            // This is a segment URL
+            let segmentURL: URL
+            if trimmedLine.hasPrefix("http") {
+                // Absolute URL
+                segmentURL = URL(string: trimmedLine)!
+            } else {
+                // Relative URL
+                segmentURL = baseURL.deletingLastPathComponent().appendingPathComponent(trimmedLine)
+            }
+            
+            let task = Task<Void, Error> { [weak self] in
+                do {
+                    let segmentData = try await self?.downloadData(from: segmentURL) ?? Data()
+                    let segmentName = segmentURL.lastPathComponent
+                    let segmentPath = "\(segmentsPath)/\(segmentName)"
+                    try segmentData.write(to: URL(fileURLWithPath: segmentPath))
+                    print("DEBUG: [CachingPlayerItem] Downloaded segment: \(segmentName)")
+                } catch {
+                    print("DEBUG: [CachingPlayerItem] Failed to download segment \(segmentURL.absoluteString): \(error)")
+                }
+            }
+            
+            segmentTasks.append(task)
+        }
+        
+        // Wait for all segments to download
+        for task in segmentTasks {
+            do {
+                try await task.value
+            } catch {
+                print("DEBUG: [CachingPlayerItem] Segment download failed: \(error)")
+            }
+        }
+        
+        print("DEBUG: [CachingPlayerItem] Completed HLS download and caching for mediaID: \(mediaID)")
+    }
+    
+    /// Download data from URL
+    private func downloadData(from url: URL) async throws -> Data {
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = URLSession.shared.dataTask(with: url) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let data = data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+            task.resume()
+        }
+    }
+    
+    /// Resolve HLS URL (master.m3u8 -> playlist.m3u8 -> fail)
+    private func resolveHLSURL(_ baseURL: URL) async -> URL {
+        // Try master.m3u8 first
+        let masterURL = baseURL.appendingPathComponent("master.m3u8")
+        if await urlExists(masterURL) {
+            print("DEBUG: [CachingPlayerItem] Found master.m3u8 at: \(masterURL.absoluteString)")
+            return masterURL
+        }
+        
+        // Try playlist.m3u8
+        let playlistURL = baseURL.appendingPathComponent("playlist.m3u8")
+        if await urlExists(playlistURL) {
+            print("DEBUG: [CachingPlayerItem] Found playlist.m3u8 at: \(playlistURL.absoluteString)")
+            return playlistURL
+        }
+        
+        // If neither exists, return the original URL (will fail gracefully)
+        print("DEBUG: [CachingPlayerItem] No HLS playlist found, using original URL")
+        return baseURL
+    }
+    
+    /// Check if URL exists
+    private func urlExists(_ url: URL) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = 5.0
+            
+            let task = URLSession.shared.dataTask(with: request) { _, response, _ in
+                let exists = (response as? HTTPURLResponse)?.statusCode == 200
+                continuation.resume(returning: exists)
+            }
+            task.resume()
+        }
     }
 
     // MARK: KVO
@@ -321,5 +532,52 @@ public final class CachingPlayerItem: AVPlayerItem {
         cachesDirectory.appendPathExtension(fileExtension)
 
         return cachesDirectory.path
+    }
+    
+    /// Generates a file path for HLS playlist in caches directory.
+    private static func hlsPlaylistPath(for mediaID: String) -> String {
+        guard var cachesDirectory = try? FileManager.default.url(for: .cachesDirectory,
+                                                                 in: .userDomainMask,
+                                                                 appropriateFor: nil,
+                                                                 create: true)
+        else {
+            fatalError("CachingPlayerItem error: Can't access default cache directory")
+        }
+        
+        let sanitizedFileName = mediaID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "hls_playlist"
+        cachesDirectory.appendPathComponent("\(sanitizedFileName).m3u8")
+        
+        return cachesDirectory.path
+    }
+    
+    /// Generates a directory path for HLS segments in caches directory.
+    public static func hlsSegmentsPath(for mediaID: String) -> String {
+        guard var cachesDirectory = try? FileManager.default.url(for: .cachesDirectory,
+                                                                 in: .userDomainMask,
+                                                                 appropriateFor: nil,
+                                                                 create: true)
+        else {
+            fatalError("CachingPlayerItem error: Can't access default cache directory")
+        }
+        
+        let sanitizedFileName = mediaID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "hls_segments"
+        cachesDirectory.appendPathComponent("\(sanitizedFileName)_segments")
+        
+        // Create directory if it doesn't exist
+        try? FileManager.default.createDirectory(at: cachesDirectory, withIntermediateDirectories: true, attributes: nil)
+        
+        return cachesDirectory.path
+    }
+    
+    /// Check if HLS video is cached by mediaID
+    public static func isHLSCached(for mediaID: String) -> Bool {
+        let playlistPath = hlsPlaylistPath(for: mediaID)
+        return FileManager.default.fileExists(atPath: playlistPath)
+    }
+    
+    /// Get cached HLS playlist path by mediaID
+    public static func getCachedHLSPath(for mediaID: String) -> String? {
+        let playlistPath = hlsPlaylistPath(for: mediaID)
+        return FileManager.default.fileExists(atPath: playlistPath) ? playlistPath : nil
     }
 }

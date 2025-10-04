@@ -1,0 +1,4 @@
+module CachingPlayerItem {
+    header "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItem-Swift.h"
+    requires objc
+}

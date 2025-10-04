@@ -1,0 +1,53 @@
+{
+  "": {
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/master.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/AppLogger.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/AppLogger.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/AppLogger.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/AppLogger~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/AppLogger.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItem.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItem.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItem.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItem~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItem.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItemConfiguration.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/MediaFileHandle.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/PendingRequest.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/PendingRequest.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/PendingRequest.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/PendingRequest~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/PendingRequest.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/ResourceLoaderDelegate.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/ResourceLoaderDelegate.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/ResourceLoaderDelegate.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/ResourceLoaderDelegate~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/ResourceLoaderDelegate.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/URLExtension.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLExtension.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLExtension.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLExtension~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLExtension.swiftdeps"
+  },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/URLResponseExtension.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLResponseExtension.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLResponseExtension.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLResponseExtension~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/URLResponseExtension.swiftdeps"
+  }
+}
