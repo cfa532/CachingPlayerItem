@@ -57,8 +57,10 @@ final class ResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, URL
     // MARK: AVAssetResourceLoaderDelegate
 
     func resourceLoader(_ resourceLoader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        print("DEBUG: [CachingPlayerItem] resourceLoader: isHLS = \(isHLS), requestURL = \(loadingRequest.request.url?.absoluteString ?? "nil")")
-        print("DEBUG: [CachingPlayerItem] resourceLoader: original url = \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] resourceLoader: isHLS = \(isHLS), requestURL = \(loadingRequest.request.url?.absoluteString ?? "nil")")
+        NSLog("DEBUG: [CachingPlayerItem] resourceLoader: original url = \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] resourceLoader: mediaID = \(mediaID ?? "nil")")
+        NSLog("DEBUG: [CachingPlayerItem] resourceLoader: saveFilePath = \(saveFilePath)")
         
         // Handle HLS videos differently
         if isHLS {
@@ -344,12 +346,12 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
     
     private func handleHLSRequest(_ loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
         guard let requestURL = loadingRequest.request.url else { 
-            print("DEBUG: [CachingPlayerItem] handleHLSRequest: No request URL")
+            NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: No request URL")
             return false 
         }
         
-        print("DEBUG: [CachingPlayerItem] handleHLSRequest: requestURL = \(requestURL.absoluteString)")
-        print("DEBUG: [CachingPlayerItem] handleHLSRequest: original url = \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: requestURL = \(requestURL.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: original url = \(url.absoluteString)")
         
         // Convert custom scheme URL back to original URL if needed
         var originalURL = requestURL
@@ -364,12 +366,12 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
             if requestPath == baseUrlPath + ".m3u8" {
                 // This is the initial request with auto-appended .m3u8 - resolve HLS URL
                 let resolvedURL = resolveHLSURLSync(url)
-                print("DEBUG: [CachingPlayerItem] handleHLSRequest: resolved HLS URL to \(resolvedURL.absoluteString)")
+                NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: resolved HLS URL to \(resolvedURL.absoluteString)")
                 originalURL = resolvedURL
             } else if requestPath == "/" || requestPath.isEmpty || requestPath.hasSuffix("/") {
                 // This is the initial request - resolve HLS URL synchronously
                 let resolvedURL = resolveHLSURLSync(url)
-                print("DEBUG: [CachingPlayerItem] handleHLSRequest: resolved HLS URL to \(resolvedURL.absoluteString)")
+                NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: resolved HLS URL to \(resolvedURL.absoluteString)")
                 originalURL = resolvedURL
             } else {
                 // This is a sub-request (playlist or segment) - construct full URL by combining base URL with relative path
@@ -385,8 +387,8 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                     
                     // The requestPath contains /ipfs/720/playlist.m3u8, but we need just /720/playlist.m3u8
                     // Remove the /ipfs/ prefix from the request path
-                    print("DEBUG: [CachingPlayerItem] handleHLSRequest: requestPath = \(requestPath)")
-                    print("DEBUG: [CachingPlayerItem] handleHLSRequest: baseURLString = \(baseURLString)")
+                    NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: requestPath = \(requestPath)")
+                    NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: baseURLString = \(baseURLString)")
                     
                     // For sub-requests, we need to construct the full URL by combining the base URL with the relative path
                     // The requestPath is like /ipfs/QmUMinKZTSx9tPpqmiyTFoPVQbsdCLMHQ5kKaQAJ8bn4d9/480p/playlist.m3u8
@@ -404,21 +406,21 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                         } else {
                             actualRelativePath = mediaID
                         }
-                        print("DEBUG: [CachingPlayerItem] handleHLSRequest: extracted relative path: \(actualRelativePath)")
+                        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: extracted relative path: \(actualRelativePath)")
                     } else {
                         // If the request path doesn't start with /ipfs/, use it as-is
                         actualRelativePath = requestPath
-                        print("DEBUG: [CachingPlayerItem] handleHLSRequest: no /ipfs/ prefix, using requestPath as-is: \(actualRelativePath)")
+                        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: no /ipfs/ prefix, using requestPath as-is: \(actualRelativePath)")
                     }
                     
                     // Construct the full URL by using the base URL without the filename, then appending the relative path
                     let baseURLWithoutFilename = url.deletingLastPathComponent().absoluteString
                     let fullURLString = baseURLWithoutFilename + "/" + actualRelativePath
-                    print("DEBUG: [CachingPlayerItem] handleHLSRequest: fullURLString = \(fullURLString)")
+                    NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: fullURLString = \(fullURLString)")
                     
                     if let fullURL = URL(string: fullURLString) {
                         originalURL = fullURL
-                        print("DEBUG: [CachingPlayerItem] handleHLSRequest: constructed full sub-request URL = \(originalURL.absoluteString)")
+                        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: constructed full sub-request URL = \(originalURL.absoluteString)")
                     } else {
                         // Fallback to scheme conversion
                         if let components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false) {
@@ -429,7 +431,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                         } else {
                             originalURL = requestURL.withScheme(url.scheme ?? "http") ?? requestURL
                         }
-                        print("DEBUG: [CachingPlayerItem] handleHLSRequest: fallback converted to originalURL = \(originalURL.absoluteString)")
+                        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: fallback converted to originalURL = \(originalURL.absoluteString)")
                     }
                 } else {
                     // This is a direct request - convert scheme while preserving path
@@ -441,85 +443,49 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                     } else {
                         originalURL = requestURL.withScheme(url.scheme ?? "http") ?? requestURL
                     }
-                    print("DEBUG: [CachingPlayerItem] handleHLSRequest: converted to originalURL = \(originalURL.absoluteString)")
+                    NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: converted to originalURL = \(originalURL.absoluteString)")
                 }
             }
         }
         
                // Check if this is a request for the main playlist or a segment
                if originalURL.absoluteString.contains(".m3u8") || requestURL.absoluteString.contains(".m3u8") {
-                   print("DEBUG: [CachingPlayerItem] handleHLSRequest: Handling as playlist request")
+                   NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: Handling as playlist request")
                    return handlePlaylistRequest(loadingRequest, resolvedURL: originalURL)
                } else if originalURL.absoluteString.contains(".ts") || originalURL.absoluteString.contains(".m4s") ||
                          requestURL.absoluteString.contains(".ts") || requestURL.absoluteString.contains(".m4s") {
-                   print("DEBUG: [CachingPlayerItem] handleHLSRequest: Handling as segment request")
+                   NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: Handling as segment request")
                    return handleSegmentRequest(loadingRequest, resolvedURL: originalURL)
                }
         
-        print("DEBUG: [CachingPlayerItem] handleHLSRequest: No matching request type found - falling back to original URL")
+        NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: No matching request type found - FAILING REQUEST")
         
-        // Fallback: if we can't handle this request, let the original URL be used
-        // This ensures the video still plays even if caching fails
-        if let dataRequest = loadingRequest.dataRequest {
-            // Create a new request to the original URL
-            let originalRequest = URLRequest(url: originalURL)
-            let task = URLSession.shared.dataTask(with: originalRequest) { data, response, error in
-                if let error = error {
-                    print("DEBUG: [CachingPlayerItem] handleHLSRequest: Fallback request failed: \(error.localizedDescription)")
-                    loadingRequest.finishLoading(with: error)
-                    return
-                }
-                
-                guard let data = data, let response = response else {
-                    print("DEBUG: [CachingPlayerItem] handleHLSRequest: Fallback request returned no data")
-                    let error = NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
-                    loadingRequest.finishLoading(with: error)
-                    return
-                }
-                
-                print("DEBUG: [CachingPlayerItem] handleHLSRequest: Fallback request successful, serving original URL data")
-                
-                // Set the response
-                loadingRequest.response = response
-                
-                // Set content information if available
-                if let contentInfoRequest = loadingRequest.contentInformationRequest {
-                    if let httpResponse = response as? HTTPURLResponse {
-                        contentInfoRequest.contentType = httpResponse.mimeType
-                        contentInfoRequest.contentLength = httpResponse.expectedContentLength
-                        contentInfoRequest.isByteRangeAccessSupported = httpResponse.allHeaderFields["Accept-Ranges"] as? String == "bytes"
-                    }
-                }
-                
-                // Serve the data
-                dataRequest.respond(with: data)
-                loadingRequest.finishLoading()
-            }
-            task.resume()
-            return true
-        }
-        
+        // Remove fallback to original URL - we need to fix the cache issue first
+        let error = NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "No matching request type found - cache issue"])
+        loadingRequest.finishLoading(with: error)
         return false
     }
     
     private func handlePlaylistRequest(_ loadingRequest: AVAssetResourceLoadingRequest, resolvedURL: URL) -> Bool {
         guard let mediaID = mediaID else { 
-            print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No mediaID - falling back to original URL")
-            return fallbackToOriginalURL(loadingRequest, originalURL: resolvedURL)
-        }
-        
-        guard loadingRequest.request.url != nil else {
-            print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No request URL")
+            NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No mediaID - FAILING REQUEST")
+            let error = NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "No mediaID - cache issue"])
+            loadingRequest.finishLoading(with: error)
             return false
         }
         
-        print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: mediaID = \(mediaID)")
+        guard loadingRequest.request.url != nil else {
+            NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No request URL")
+            return false
+        }
+        
+        NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: mediaID = \(mediaID)")
         
         // Use the resolved HLS URL instead of converting from requestURL
         // The resolvedURL contains the properly resolved master.m3u8 or playlist.m3u8 URL
         let actualPlaylistURL = resolvedURL
         
-        print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Actual playlist URL = \(actualPlaylistURL.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Actual playlist URL = \(actualPlaylistURL.absoluteString)")
         
         // Check if we have a cached playlist for this specific URL
         // Use host-agnostic cache key based on the path only
@@ -529,8 +495,8 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         if FileManager.default.fileExists(atPath: cachePath),
            let playlistData = FileManager.default.contents(atPath: cachePath) {
             
-            print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Serving cached playlist from \(cachePath)")
-            print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Playlist data size: \(playlistData.count) bytes")
+            NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Serving cached playlist from \(cachePath)")
+            NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Playlist data size: \(playlistData.count) bytes")
             
             // Modify the playlist to point to local server URLs
             let modifiedPlaylistData = modifyPlaylistForLocalServer(playlistData, mediaID: mediaID)
@@ -538,7 +504,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
             // Log first 200 characters of modified playlist content for debugging
             if let playlistString = String(data: modifiedPlaylistData, encoding: .utf8) {
                 let preview = String(playlistString.prefix(200))
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Modified playlist preview: \(preview)")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Modified playlist preview: \(preview)")
             }
             
             // Create proper HTTP response FIRST - this is critical for AVPlayer
@@ -553,7 +519,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                    "Connection": "keep-alive"
                ]) {
                 loadingRequest.response = response
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Set HTTP response headers for cached playlist")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Set HTTP response headers for cached playlist")
             }
             
             // Set proper Content-Type header for M3U8 files
@@ -561,16 +527,16 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                 contentInformationRequest.contentType = "application/vnd.apple.mpegurl"
                 contentInformationRequest.contentLength = Int64(modifiedPlaylistData.count)
                 contentInformationRequest.isByteRangeAccessSupported = false
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Set Content-Type to application/vnd.apple.mpegurl, contentLength: \(modifiedPlaylistData.count)")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Set Content-Type to application/vnd.apple.mpegurl, contentLength: \(modifiedPlaylistData.count)")
             } else {
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No contentInformationRequest available - using HTTP headers only")
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Request URL: \(loadingRequest.request.url?.absoluteString ?? "nil")")
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Request method: \(loadingRequest.request.httpMethod ?? "nil")")
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Request headers: \(loadingRequest.request.allHTTPHeaderFields ?? [:])")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No contentInformationRequest available - using HTTP headers only")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Request URL: \(loadingRequest.request.url?.absoluteString ?? "nil")")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Request method: \(loadingRequest.request.httpMethod ?? "nil")")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Request headers: \(loadingRequest.request.allHTTPHeaderFields ?? [:])")
                 
                 // When contentInformationRequest is nil, we rely entirely on HTTP response headers
                 // The HTTP response headers we set above should be sufficient for AVPlayer
-                print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Relying on HTTP response headers for content information")
+                NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Relying on HTTP response headers for content information")
             }
             
             // Handle byte range requests if present
@@ -584,7 +550,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                     let endIndex = min(startIndex + Int(requestedLength), modifiedPlaylistData.count)
                     let rangeData = modifiedPlaylistData.subdata(in: startIndex..<endIndex)
                     
-                    print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Serving byte range \(startIndex)-\(endIndex-1) of \(modifiedPlaylistData.count)")
+                    NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Serving byte range \(startIndex)-\(endIndex-1) of \(modifiedPlaylistData.count)")
                     dataRequest.respond(with: rangeData)
                 } else {
                     // Full content request
@@ -596,7 +562,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
             return true
         }
         
-        print("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No cached playlist, downloading from \(actualPlaylistURL.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: No cached playlist, downloading from \(actualPlaylistURL.absoluteString)")
         // Download and cache playlist using the actual URL
         startHLSPlaylistDownload(loadingRequest, playlistURL: actualPlaylistURL, cachePath: cachePath)
         return true
@@ -629,7 +595,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
             .replacingOccurrences(of: "=", with: "_")
             .replacingOccurrences(of: " ", with: "_")
         
-        print("DEBUG: [CachingPlayerItem] Cache path (host-agnostic): \(sanitizedKey)")
+        NSLog("DEBUG: [CachingPlayerItem] Cache path (host-agnostic): \(sanitizedKey)")
         
         // Only add .m3u8 extension if the key doesn't already have it
         let finalKey = sanitizedKey.hasSuffix(".m3u8") ? sanitizedKey : "\(sanitizedKey).m3u8"
@@ -653,21 +619,21 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         let masterURL = url.appendingPathComponent("master.m3u8")
         let playlistURL = url.appendingPathComponent("playlist.m3u8")
         
-        print("DEBUG: [CachingPlayerItem] Resolving HLS URL: \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] Resolving HLS URL: \(url.absoluteString)")
         
         // Try master.m3u8 first, then playlist.m3u8
         if urlExistsSync(masterURL, timeout: 2.0) {
-            print("DEBUG: [CachingPlayerItem] Found master.m3u8 at: \(masterURL.absoluteString)")
+            NSLog("DEBUG: [CachingPlayerItem] Found master.m3u8 at: \(masterURL.absoluteString)")
             return masterURL
         }
         
         if urlExistsSync(playlistURL, timeout: 2.0) {
-            print("DEBUG: [CachingPlayerItem] Found playlist.m3u8 at: \(playlistURL.absoluteString)")
+            NSLog("DEBUG: [CachingPlayerItem] Found playlist.m3u8 at: \(playlistURL.absoluteString)")
             return playlistURL
         }
         
         // If both attempts fail, return original URL and let it fail
-        print("DEBUG: [CachingPlayerItem] HLS resolution failed for: \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] HLS resolution failed for: \(url.absoluteString)")
         return url
     }
     
@@ -688,34 +654,34 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         let masterURL = url.appendingPathComponent("master.m3u8")
         let playlistURL = url.appendingPathComponent("playlist.m3u8")
         
-        print("DEBUG: [CachingPlayerItem] Resolving HLS URL: \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] Resolving HLS URL: \(url.absoluteString)")
         
         // First attempt: try master.m3u8, then playlist.m3u8
         if await urlExists(masterURL, timeout: 3.0) {
-            print("DEBUG: [CachingPlayerItem] Found master.m3u8 at: \(masterURL.absoluteString)")
+            NSLog("DEBUG: [CachingPlayerItem] Found master.m3u8 at: \(masterURL.absoluteString)")
             return masterURL
         }
         
         if await urlExists(playlistURL, timeout: 3.0) {
-            print("DEBUG: [CachingPlayerItem] Found playlist.m3u8 at: \(playlistURL.absoluteString)")
+            NSLog("DEBUG: [CachingPlayerItem] Found playlist.m3u8 at: \(playlistURL.absoluteString)")
             return playlistURL
         }
         
         // Second attempt: retry the combo once more
-        print("DEBUG: [CachingPlayerItem] First attempt failed, retrying HLS URLs...")
+        NSLog("DEBUG: [CachingPlayerItem] First attempt failed, retrying HLS URLs...")
         
         if await urlExists(masterURL, timeout: 3.0) {
-            print("DEBUG: [CachingPlayerItem] Retry successful - found master.m3u8 at: \(masterURL.absoluteString)")
+            NSLog("DEBUG: [CachingPlayerItem] Retry successful - found master.m3u8 at: \(masterURL.absoluteString)")
             return masterURL
         }
         
         if await urlExists(playlistURL, timeout: 3.0) {
-            print("DEBUG: [CachingPlayerItem] Retry successful - found playlist.m3u8 at: \(playlistURL.absoluteString)")
+            NSLog("DEBUG: [CachingPlayerItem] Retry successful - found playlist.m3u8 at: \(playlistURL.absoluteString)")
             return playlistURL
         }
         
         // If both attempts fail, return original URL and let it fail
-        print("DEBUG: [CachingPlayerItem] HLS resolution failed for: \(url.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] HLS resolution failed for: \(url.absoluteString)")
         return url
     }
     
@@ -759,27 +725,27 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
     private func handleSegmentRequest(_ loadingRequest: AVAssetResourceLoadingRequest, resolvedURL: URL) -> Bool {
         guard let requestURL = loadingRequest.request.url,
               let mediaID = mediaID else { 
-            print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Missing requestURL or mediaID - falling back to original URL")
+            NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Missing requestURL or mediaID - falling back to original URL")
             return fallbackToOriginalURL(loadingRequest, originalURL: resolvedURL)
         }
         
-        print("DEBUG: [CachingPlayerItem] handleSegmentRequest: requestURL = \(requestURL.absoluteString)")
-        print("DEBUG: [CachingPlayerItem] handleSegmentRequest: mediaID = \(mediaID)")
+        NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: requestURL = \(requestURL.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: mediaID = \(mediaID)")
         
         // Use the resolved URL from the parent method
         let originalURL = resolvedURL
-        print("DEBUG: [CachingPlayerItem] handleSegmentRequest: resolvedURL = \(originalURL.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: resolvedURL = \(originalURL.absoluteString)")
         
         let segmentName = requestURL.lastPathComponent
         let segmentsPath = CachingPlayerItem.hlsSegmentsPath(for: mediaID)
         let segmentPath = URL(fileURLWithPath: segmentsPath).appendingPathComponent(segmentName).path
         
-        print("DEBUG: [CachingPlayerItem] handleSegmentRequest: segmentName = \(segmentName)")
-        print("DEBUG: [CachingPlayerItem] handleSegmentRequest: segmentPath = \(segmentPath)")
+        NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: segmentName = \(segmentName)")
+        NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: segmentPath = \(segmentPath)")
         
         // Check if segment is cached
         if let segmentData = FileManager.default.contents(atPath: segmentPath) {
-            print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Serving cached segment, size: \(segmentData.count) bytes")
+            NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Serving cached segment, size: \(segmentData.count) bytes")
             
             // Create proper HTTP response FIRST - this is critical for AVPlayer
             if let response = HTTPURLResponse(url: requestURL, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
