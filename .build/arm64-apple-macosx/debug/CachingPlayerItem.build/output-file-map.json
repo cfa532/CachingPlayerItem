@@ -20,6 +20,12 @@
     "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration~partial.swiftmodule",
     "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration.swiftdeps"
   },
+  "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/LocalHTTPServer.swift": {
+    "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/LocalHTTPServer.d",
+    "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/LocalHTTPServer.swift.o",
+    "swiftmodule": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/LocalHTTPServer~partial.swiftmodule",
+    "swift-dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/LocalHTTPServer.swiftdeps"
+  },
   "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/MediaFileHandle.swift": {
     "dependencies": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.d",
     "object": "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.swift.o",

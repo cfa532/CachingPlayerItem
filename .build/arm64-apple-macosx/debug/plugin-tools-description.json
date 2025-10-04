@@ -36,6 +36,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/LocalHTTPServer.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/MediaFileHandle.swift"
         },
         {
@@ -70,6 +74,7 @@
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/AppLogger.swift.o",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItem.swift.o",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/CachingPlayerItemConfiguration.swift.o",
+        "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/LocalHTTPServer.swift.o",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.swift.o",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/PendingRequest.swift.o",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/ResourceLoaderDelegate.swift.o",
@@ -140,6 +145,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/LocalHTTPServer.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cfa532/Documents/GitHub/CachingPlayerItem/.build/arm64-apple-macosx/debug/CachingPlayerItem.build/MediaFileHandle.swift.o"
         },
         {
@@ -168,6 +177,7 @@
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/AppLogger.swift",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItem.swift",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItemConfiguration.swift",
+        "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/LocalHTTPServer.swift",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/MediaFileHandle.swift",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/PendingRequest.swift",
         "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/ResourceLoaderDelegate.swift",
@@ -191,6 +201,7 @@
       "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/AppLogger.swift",
       "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItem.swift",
       "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItemConfiguration.swift",
+      "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/LocalHTTPServer.swift",
       "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/MediaFileHandle.swift",
       "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/PendingRequest.swift",
       "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/ResourceLoaderDelegate.swift",
@@ -281,6 +292,10 @@
         {
           "kind" : "file",
           "name" : "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/CachingPlayerItemConfiguration.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cfa532/Documents/GitHub/CachingPlayerItem/Source/LocalHTTPServer.swift"
         },
         {
           "kind" : "file",
