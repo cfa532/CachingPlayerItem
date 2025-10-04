@@ -2,8 +2,8 @@ import Foundation
 import Network
 
 /// Local HTTP server to serve cached HLS content with proper HTTP responses
-class LocalHTTPServer {
-    static let shared = LocalHTTPServer()
+public class LocalHTTPServer {
+    public static let shared = LocalHTTPServer()
     
     private let queue = DispatchQueue(label: "LocalHTTPServer", qos: .userInitiated)
     private var listener: NWListener?
@@ -19,7 +19,7 @@ class LocalHTTPServer {
     private init() {}
     
     /// Start the HTTP server
-    func start() {
+    public func start() {
         guard !isRunning else { return }
         
         // Find an available port
@@ -56,13 +56,13 @@ class LocalHTTPServer {
     }
     
     /// Register a media ID with its cache path
-    func registerMedia(mediaID: String, cachePath: String) {
+    public func registerMedia(mediaID: String, cachePath: String) {
         mediaPaths[mediaID] = cachePath
         print("DEBUG: [LocalHTTPServer] Registered media \(mediaID) at path \(cachePath)")
     }
     
     /// Get the local URL for a media ID
-    func getLocalURL(for mediaID: String) -> URL? {
+    public func getLocalURL(for mediaID: String) -> URL? {
         guard isRunning else { return nil }
         return URL(string: "http://localhost:\(port)/media/\(mediaID)")
     }
