@@ -626,7 +626,7 @@ public final class CachingPlayerItem: AVPlayerItem {
     }
     
     /// Generates a file path for HLS playlist in caches directory.
-    private static func hlsPlaylistPath(for mediaID: String) -> String {
+    public static func hlsPlaylistPath(for mediaID: String) -> String {
         guard var cachesDirectory = try? FileManager.default.url(for: .cachesDirectory,
                                                                  in: .userDomainMask,
                                                                  appropriateFor: nil,
