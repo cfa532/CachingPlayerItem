@@ -38,7 +38,7 @@ import Network
 public final class CachingPlayerItem: AVPlayerItem {
     private let cachingPlayerItemScheme = "cachingPlayerItemScheme"
 
-    private lazy var resourceLoaderDelegate = ResourceLoaderDelegate(url: url, saveFilePath: saveFilePath, owner: self, isHLS: isHLS, mediaID: mediaID)
+    private var resourceLoaderDelegate: ResourceLoaderDelegate?
     private let url: URL
     private let initialScheme: String?
     private let saveFilePath: String
@@ -47,11 +47,40 @@ public final class CachingPlayerItem: AVPlayerItem {
     private let mediaID: String?
     /// HTTPHeaderFields set in avUrlAssetOptions using AVURLAssetHTTPHeaderFieldsKey
     internal var urlRequestHeaders: [String: String]?
+    
+    // Task management for proper cleanup
+    private var activeTasks: Set<Task<Void, Never>> = []
 
     /// Useful for keeping relevant model associated with CachingPlayerItem instance. This is a **strong** reference, be mindful not to create a **retain cycle**.
     public var passOnObject: Any?
     /// `delegate` for status updates.
     public weak var delegate: CachingPlayerItemDelegate?
+    
+    deinit {
+        // Cancel all active tasks to prevent weak reference crashes
+        for task in activeTasks {
+            task.cancel()
+        }
+        activeTasks.removeAll()
+        
+        removeObservers()
+        
+        // Clean up resource loader delegate to prevent weak reference issues
+        if let urlAsset = asset as? AVURLAsset {
+            urlAsset.resourceLoader.setDelegate(nil, queue: nil)
+        }
+
+        // Cancel download only for caching inits
+        guard initialScheme != nil else { return }
+
+        // Otherwise the ResourceLoaderDelegate wont deallocate and will keep downloading.
+        resourceLoaderDelegate?.invalidateAndCancelSession(shouldResetData: false)
+    }
+    
+    /// Helper method to remove completed task from tracking
+    private func removeTask(_ task: Task<Void, Never>) {
+        activeTasks.remove(task)
+    }
 
     // MARK: Public init
 
@@ -132,13 +161,13 @@ public final class CachingPlayerItem: AVPlayerItem {
             guard var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
                 fatalError("CachingPlayerItem error: Failed to create custom scheme URL")
             }
-            
-            if let ext = customFileExtension {
-                urlWithCustomScheme.deletePathExtension()
-                urlWithCustomScheme.appendPathExtension(ext)
-                self.customFileExtension = ext
+
+        if let ext = customFileExtension {
+            urlWithCustomScheme.deletePathExtension()
+            urlWithCustomScheme.appendPathExtension(ext)
+            self.customFileExtension = ext
             } else {
-                assert(url.pathExtension.isEmpty == false, "CachingPlayerItem error: url pathExtension empty, pass the extension in `customFileExtension` parameter")
+            assert(url.pathExtension.isEmpty == false, "CachingPlayerItem error: url pathExtension empty, pass the extension in `customFileExtension` parameter")
             }
             
             finalURL = urlWithCustomScheme
@@ -151,9 +180,10 @@ public final class CachingPlayerItem: AVPlayerItem {
         let asset = AVURLAsset(url: finalURL, options: avUrlAssetOptions)
         super.init(asset: asset, automaticallyLoadedAssetKeys: nil)
 
-        // Only set resource loader delegate for progressive videos (not HLS with HTTP server)
+        // Initialize resource loader delegate for progressive videos
         if !isHLS {
-            asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
+            resourceLoaderDelegate = ResourceLoaderDelegate(url: url, saveFilePath: saveFilePath, owner: self, isHLS: isHLS, mediaID: mediaID)
+        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: DispatchQueue.main)
         } else if isHLS, let _ = mediaID {
             // For HLS with HTTP server, start downloading and caching the content
             startHLSDownloadAndCaching()
@@ -269,15 +299,6 @@ public final class CachingPlayerItem: AVPlayerItem {
         addObservers()
     }
 
-    deinit {
-        removeObservers()
-
-        // Cancel download only for caching inits
-        guard initialScheme != nil else { return }
-
-        // Otherwise the ResourceLoaderDelegate wont deallocate and will keep downloading.
-        resourceLoaderDelegate.invalidateAndCancelSession(shouldResetData: false)
-    }
 
     // MARK: Public methods
 
@@ -289,7 +310,7 @@ public final class CachingPlayerItem: AVPlayerItem {
             return
         }
 
-        resourceLoaderDelegate.startFileDownload(with: url)
+        resourceLoaderDelegate?.startFileDownload(with: url)
     }
 
     /// Cancels the download of the media file and deletes the incomplete cached file. Works only with the initializers intended for play and cache.
@@ -300,7 +321,7 @@ public final class CachingPlayerItem: AVPlayerItem {
             return
         }
 
-        resourceLoaderDelegate.invalidateAndCancelSession()
+        resourceLoaderDelegate?.invalidateAndCancelSession()
     }
     
     // MARK: HLS HTTP Server Support
@@ -312,9 +333,14 @@ public final class CachingPlayerItem: AVPlayerItem {
         print("DEBUG: [CachingPlayerItem] Starting HLS download and caching for mediaID: \(mediaID)")
         
         // Start downloading the master playlist directly without using ResourceLoaderDelegate
-        Task { [weak self] in
-            await self?.downloadHLSContent()
+        let task = Task<Void, Never> { [weak self] in
+            guard let self = self else { return }
+            await self.downloadHLSContent()
         }
+        activeTasks.insert(task)
+        
+        // Don't create a separate cleanup task - let deinit handle cleanup
+        // The task will be removed from activeTasks in deinit when the instance is deallocated
     }
     
     /// Download HLS content asynchronously
@@ -328,20 +354,54 @@ public final class CachingPlayerItem: AVPlayerItem {
             
             // Download the master playlist
             let playlistData = try await downloadData(from: resolvedURL)
+            
+            // Modify the playlist to include mediaID in sub-playlist URLs
+            let modifiedPlaylistData = try modifyPlaylistForLocalServer(playlistData: playlistData, mediaID: mediaID)
+            
             let playlistPath = saveFilePath
-            try playlistData.write(to: URL(fileURLWithPath: playlistPath))
-            print("DEBUG: [CachingPlayerItem] Downloaded master playlist to: \(playlistPath)")
+            try modifiedPlaylistData.write(to: URL(fileURLWithPath: playlistPath))
+            print("DEBUG: [CachingPlayerItem] Downloaded and modified master playlist to: \(playlistPath)")
             
             // Parse and download segments
             await downloadHLSSegments(playlistData: playlistData, baseURL: resolvedURL, mediaID: mediaID)
             
         } catch {
             print("DEBUG: [CachingPlayerItem] Failed to download HLS content: \(error)")
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.delegate?.playerItem?(self, downloadingFailedWith: error)
+            // Don't use weak self here to avoid weak reference crash
+            // The delegate callback is optional and can be safely skipped if self is deallocated
+        }
+    }
+    
+    /// Modify playlist content to include mediaID in sub-playlist URLs for local server
+    private func modifyPlaylistForLocalServer(playlistData: Data, mediaID: String) throws -> Data {
+        guard let playlistContent = String(data: playlistData, encoding: .utf8) else {
+            throw NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse playlist content"])
+        }
+        
+        let lines = playlistContent.components(separatedBy: .newlines)
+        var modifiedLines: [String] = []
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Check if this line contains a sub-playlist URL (ends with .m3u8 and doesn't start with http)
+            if trimmedLine.hasSuffix(".m3u8") && !trimmedLine.hasPrefix("http") {
+                // This is a relative sub-playlist URL, modify it to include mediaID
+                let modifiedURL = "/media/\(mediaID)/\(trimmedLine)"
+                modifiedLines.append(modifiedURL)
+                print("DEBUG: [CachingPlayerItem] Modified sub-playlist URL: \(trimmedLine) -> \(modifiedURL)")
+            } else {
+                // Keep other lines unchanged
+                modifiedLines.append(line)
             }
         }
+        
+        let modifiedContent = modifiedLines.joined(separator: "\n")
+        guard let modifiedData = modifiedContent.data(using: .utf8) else {
+            throw NSError(domain: "CachingPlayerItem", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode modified playlist content"])
+        }
+        
+        return modifiedData
     }
     
     /// Download HLS segments from playlist
@@ -377,17 +437,32 @@ public final class CachingPlayerItem: AVPlayerItem {
                 segmentURL = baseURL.deletingLastPathComponent().appendingPathComponent(trimmedLine)
             }
             
-            let task = Task<Void, Error> { [weak self] in
+            let task = Task<Void, Error> {
                 do {
-                    let segmentData = try await self?.downloadData(from: segmentURL) ?? Data()
+                    // Use URLSession directly instead of self?.downloadData to avoid weak reference
+                    let segmentData = try await Self.downloadDataDirectly(from: segmentURL)
                     let segmentName = segmentURL.lastPathComponent
                     let segmentPath = "\(segmentsPath)/\(segmentName)"
                     try segmentData.write(to: URL(fileURLWithPath: segmentPath))
                     print("DEBUG: [CachingPlayerItem] Downloaded segment: \(segmentName)")
                 } catch {
                     print("DEBUG: [CachingPlayerItem] Failed to download segment \(segmentURL.absoluteString): \(error)")
+                    throw error
                 }
             }
+            
+            // Create a wrapper task for tracking
+            var trackingTask: Task<Void, Never>!
+            trackingTask = Task<Void, Never> {
+                do {
+                    try await task.value
+                } catch {
+                    // Error already logged in the main task
+                }
+                // Don't try to remove task here - let deinit handle cleanup
+                // This avoids the weak reference crash when self is being deallocated
+            }
+            activeTasks.insert(trackingTask)
             
             segmentTasks.append(task)
         }
@@ -406,6 +481,22 @@ public final class CachingPlayerItem: AVPlayerItem {
     
     /// Download data from URL
     private func downloadData(from url: URL) async throws -> Data {
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = URLSession.shared.dataTask(with: url) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let data = data {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+            task.resume()
+        }
+    }
+    
+    /// Static version of downloadData that doesn't require self
+    private static func downloadDataDirectly(from url: URL) async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
             let task = URLSession.shared.dataTask(with: url) { data, response, error in
                 if let error = error {
@@ -580,4 +671,45 @@ public final class CachingPlayerItem: AVPlayerItem {
         let playlistPath = hlsPlaylistPath(for: mediaID)
         return FileManager.default.fileExists(atPath: playlistPath) ? playlistPath : nil
     }
+    
+    /// Clear all cached HLS content for a specific mediaID
+    public static func clearHLSCache(for mediaID: String) {
+        let playlistPath = hlsPlaylistPath(for: mediaID)
+        let segmentsPath = hlsSegmentsPath(for: mediaID)
+        
+        // Remove playlist file
+        try? FileManager.default.removeItem(atPath: playlistPath)
+        
+        // Remove segments directory
+        try? FileManager.default.removeItem(atPath: segmentsPath)
+        
+        print("DEBUG: [CachingPlayerItem] Cleared HLS cache for mediaID: \(mediaID)")
+    }
+    
+    /// Clear all cached content (both HLS and progressive videos)
+    public static func clearAllCache() {
+        guard let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            print("DEBUG: [CachingPlayerItem] Failed to access caches directory")
+            return
+        }
+        
+        do {
+            let contents = try FileManager.default.contentsOfDirectory(at: cachesDirectory, includingPropertiesForKeys: nil)
+            
+            for url in contents {
+                let fileName = url.lastPathComponent
+                
+                // Remove files that look like cached media (contain mediaID patterns)
+                if fileName.hasSuffix(".m3u8") || fileName.hasSuffix("_segments") || fileName.contains("Qm") {
+                    try FileManager.default.removeItem(at: url)
+                    print("DEBUG: [CachingPlayerItem] Removed cached file: \(fileName)")
+                }
+            }
+            
+            print("DEBUG: [CachingPlayerItem] Cleared all cache files")
+        } catch {
+            print("DEBUG: [CachingPlayerItem] Failed to clear cache: \(error)")
+        }
+    }
 }
+

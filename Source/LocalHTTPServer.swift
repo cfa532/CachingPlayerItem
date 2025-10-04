@@ -13,6 +13,9 @@ class LocalHTTPServer {
     // Cache of media IDs to their base paths for serving
     private var mediaPaths: [String: String] = [:]
     
+    // Track which connection is associated with which mediaID
+    private var connectionMediaMapping: [ObjectIdentifier: String] = [:]
+    
     private init() {}
     
     /// Start the HTTP server
@@ -47,6 +50,7 @@ class LocalHTTPServer {
         listener = nil
         isRunning = false
         mediaPaths.removeAll()
+        connectionMediaMapping.removeAll()
         
         print("DEBUG: [LocalHTTPServer] Stopped HTTP server")
     }
@@ -105,6 +109,8 @@ class LocalHTTPServer {
             }
             
             if isComplete {
+                // Clean up connection mapping when connection is complete
+                self?.connectionMediaMapping.removeValue(forKey: ObjectIdentifier(connection))
                 connection.cancel()
             }
         }
@@ -135,10 +141,126 @@ class LocalHTTPServer {
         
         // Parse the media ID from the path
         if path.hasPrefix("/media/") {
-            let mediaID = String(path.dropFirst(7)) // Remove "/media/"
-            serveMedia(mediaID: mediaID, connection: connection, path: path)
+            let remainingPath = String(path.dropFirst(7)) // Remove "/media/"
+            
+            // Check if this is a sub-playlist or TS segment request with mediaID in path
+            if remainingPath.contains("/") && (remainingPath.hasSuffix("/playlist.m3u8") || remainingPath.hasSuffix(".ts")) {
+                // Extract mediaID from path like "/media/VideoA/720p/playlist.m3u8"
+                let pathComponents = remainingPath.components(separatedBy: "/")
+                if pathComponents.count >= 3 {
+                    let mediaID = pathComponents[0] // First component is the mediaID
+                    let relativePath = pathComponents.dropFirst().joined(separator: "/") // Rest is the relative path
+                    
+                    // Track this connection as associated with this mediaID
+                    connectionMediaMapping[ObjectIdentifier(connection)] = mediaID
+                    
+                    if remainingPath.hasSuffix("/playlist.m3u8") {
+                        handleSubPlaylistRequestWithMediaID(path: path, mediaID: mediaID, relativePath: relativePath, connection: connection)
+                    } else if remainingPath.hasSuffix(".ts") {
+                        handleTSSegmentRequestWithMediaID(path: path, mediaID: mediaID, relativePath: relativePath, connection: connection)
+                    }
+                } else {
+                    // Fallback to old logic for backwards compatibility
+                    if remainingPath.hasSuffix("/playlist.m3u8") {
+                        handleSubPlaylistRequest(path: path, connection: connection)
+                    } else if remainingPath.hasSuffix(".ts") {
+                        handleTSSegmentRequest(path: path, connection: connection)
+                    }
+                }
+            } else {
+                // This is a direct media request (e.g., "/media/QmX58Pz7mgZpok67RLgYqcCAoHi2hgLktFJqnJQ55aJ3zf")
+                // Track this connection as associated with this mediaID
+                connectionMediaMapping[ObjectIdentifier(connection)] = remainingPath
+                serveMedia(mediaID: remainingPath, connection: connection, path: path)
+            }
         } else {
             sendErrorResponse(connection: connection, statusCode: 404, message: "Not Found")
+        }
+    }
+    
+    /// Handle sub-playlist requests that include the mediaID in the path
+    private func handleSubPlaylistRequestWithMediaID(path: String, mediaID: String, relativePath: String, connection: NWConnection) {
+        print("DEBUG: [LocalHTTPServer] Handling sub-playlist request with mediaID: \(mediaID), relativePath: \(relativePath)")
+        
+        // Extract resolution from relativePath like "720p/playlist.m3u8"
+        let pathComponents = relativePath.components(separatedBy: "/")
+        if pathComponents.count >= 2 && pathComponents.last == "playlist.m3u8" {
+            let resolution = pathComponents[0] // e.g., "720p"
+            downloadSubPlaylistOnDemand(mediaID: mediaID, resolution: resolution, connection: connection)
+        } else {
+            sendErrorResponse(connection: connection, statusCode: 404, message: "Invalid sub-playlist request format")
+        }
+    }
+    
+    /// Handle TS segment requests that include the mediaID in the path
+    private func handleTSSegmentRequestWithMediaID(path: String, mediaID: String, relativePath: String, connection: NWConnection) {
+        print("DEBUG: [LocalHTTPServer] Handling TS segment request with mediaID: \(mediaID), relativePath: \(relativePath)")
+        
+        // Extract resolution and segment name from relativePath like "720p/segment.ts"
+        let pathComponents = relativePath.components(separatedBy: "/")
+        if pathComponents.count >= 2 && pathComponents.last?.hasSuffix(".ts") == true {
+            let resolution = pathComponents[0] // e.g., "720p"
+            let segmentName = pathComponents.last! // e.g., "segment.ts"
+            downloadTSSegmentOnDemand(mediaID: mediaID, resolution: resolution, segmentName: segmentName, connection: connection)
+        } else {
+            sendErrorResponse(connection: connection, statusCode: 404, message: "Invalid TS segment request format")
+        }
+    }
+    
+    /// Handle sub-playlist requests that don't include the mediaID in the path (fallback)
+    private func handleSubPlaylistRequest(path: String, connection: NWConnection) {
+        let pathComponents = path.components(separatedBy: "/")
+        guard pathComponents.count >= 4 && pathComponents[3] == "playlist.m3u8" else {
+            sendErrorResponse(connection: connection, statusCode: 404, message: "Invalid sub-playlist request")
+            return
+        }
+        
+        let resolution = pathComponents[2] // e.g., "720p"
+        print("DEBUG: [LocalHTTPServer] Handling sub-playlist request: \(resolution)/playlist.m3u8")
+        
+        // Use the mediaID associated with this connection
+        if let mediaID = connectionMediaMapping[ObjectIdentifier(connection)] {
+            print("DEBUG: [LocalHTTPServer] Using tracked mediaID: \(mediaID) for sub-playlist request")
+            downloadSubPlaylistOnDemand(mediaID: mediaID, resolution: resolution, connection: connection)
+        } else {
+            print("DEBUG: [LocalHTTPServer] No mediaID tracked for connection, using fallback")
+            // Fallback to most recent mediaID if no tracking available
+            let mediaIDs = Array(mediaPaths.keys)
+            if let mostRecentMediaID = mediaIDs.last {
+                print("DEBUG: [LocalHTTPServer] Using fallback mediaID: \(mostRecentMediaID) for sub-playlist request")
+                downloadSubPlaylistOnDemand(mediaID: mostRecentMediaID, resolution: resolution, connection: connection)
+            } else {
+                sendErrorResponse(connection: connection, statusCode: 404, message: "No media registered")
+            }
+        }
+    }
+    
+    /// Handle TS segment requests that don't include the mediaID in the path
+    private func handleTSSegmentRequest(path: String, connection: NWConnection) {
+        let pathComponents = path.components(separatedBy: "/")
+        guard pathComponents.count >= 4 && pathComponents.last?.hasSuffix(".ts") == true else {
+            sendErrorResponse(connection: connection, statusCode: 404, message: "Invalid TS segment request")
+            return
+        }
+        
+        let resolution = pathComponents[2] // e.g., "720p"
+        let segmentName = pathComponents.last! // e.g., "playlist_000.ts"
+        print("DEBUG: [LocalHTTPServer] Handling TS segment request: \(resolution)/\(segmentName)")
+        
+        // Use the mediaID associated with this connection
+        if let mediaID = connectionMediaMapping[ObjectIdentifier(connection)] {
+            print("DEBUG: [LocalHTTPServer] Using tracked mediaID: \(mediaID) for TS segment request")
+            downloadTSSegmentOnDemand(mediaID: mediaID, resolution: resolution, segmentName: segmentName, connection: connection)
+        } else {
+            print("DEBUG: [LocalHTTPServer] No mediaID tracked for connection, using fallback")
+            // Fallback to most recent mediaID if no tracking available
+            let mediaIDs = Array(mediaPaths.keys)
+            if let mostRecentMediaID = mediaIDs.last {
+                print("DEBUG: [LocalHTTPServer] Using fallback mediaID: \(mostRecentMediaID) for TS segment request")
+                downloadTSSegmentOnDemand(mediaID: mostRecentMediaID, resolution: resolution, segmentName: segmentName, connection: connection)
+            } else {
+                sendErrorResponse(connection: connection, statusCode: 404, message: "No media registered")
+            }
         }
     }
     
@@ -157,19 +279,19 @@ class LocalHTTPServer {
         
         if path.hasSuffix(".m3u8") {
             // HLS playlist request - check if it's a sub-playlist or master playlist
-            if path.contains("/") && !path.hasSuffix("/\(mediaID)") {
-                // This is a sub-playlist request (e.g., "720p/playlist.m3u8")
+            if path.hasPrefix("/media/") && path.contains("/") && path.hasSuffix("/playlist.m3u8") {
+                // This is a sub-playlist request (e.g., "/media/720p/playlist.m3u8")
                 let pathComponents = path.components(separatedBy: "/")
-                if let lastComponent = pathComponents.last, lastComponent == "playlist.m3u8" {
-                    let resolution = pathComponents.count > 1 ? pathComponents[pathComponents.count - 2] : "720p"
-                    filePath = "\(basePath)_\(resolution)_playlist.m3u8"
-                } else {
-                    filePath = "\(basePath)_playlist.m3u8"
+                if pathComponents.count >= 4 && pathComponents[3] == "playlist.m3u8" {
+                    let resolution = pathComponents[2] // e.g., "720p"
+                    print("DEBUG: [LocalHTTPServer] Detected sub-playlist request: \(resolution)/playlist.m3u8 for mediaID: \(mediaID)")
+                    downloadSubPlaylistOnDemand(mediaID: mediaID, resolution: resolution, connection: connection)
+                    return
                 }
-            } else {
-                // This is the master playlist request - use the base path directly
-                filePath = basePath
             }
+            
+            // This is the master playlist request - use the base path directly
+            filePath = basePath
             contentType = "application/vnd.apple.mpegurl"
         } else if path.hasSuffix(".ts") || path.hasSuffix(".m4s") {
             // HLS segment request
@@ -195,6 +317,13 @@ class LocalHTTPServer {
         if FileManager.default.fileExists(atPath: filePath) {
             do {
                 let data = try Data(contentsOf: fileURL)
+                
+                // Debug: Log master playlist content for troubleshooting
+                if filePath.hasSuffix(".m3u8") && !filePath.contains("/") {
+                    if let content = String(data: data, encoding: .utf8) {
+                        print("DEBUG: [LocalHTTPServer] Master playlist content:\n\(content)")
+                    }
+                }
                 
                 // Create HTTP response headers
                 let contentLength = data.count
@@ -230,6 +359,89 @@ class LocalHTTPServer {
             print("DEBUG: [LocalHTTPServer] File does not exist, triggering on-demand download: \(filePath)")
             // File doesn't exist yet, trigger on-demand download
             downloadFileOnDemand(filePath: filePath, contentType: contentType, connection: connection)
+        }
+    }
+    
+    /// Download sub-playlist on-demand when HTTP server receives request
+    private func downloadSubPlaylistOnDemand(mediaID: String, resolution: String, connection: NWConnection) {
+        print("DEBUG: [LocalHTTPServer] Starting on-demand download for sub-playlist: \(resolution)/playlist.m3u8, mediaID: \(mediaID)")
+        
+        // Construct original URL - we'll need to store this mapping properly in the future
+        let originalURL = "http://125.229.161.122:8080/ipfs/\(mediaID)/\(resolution)/playlist.m3u8"
+        
+        // Download the file asynchronously
+        Task {
+            do {
+                let data = try await downloadData(from: URL(string: originalURL)!)
+                
+                // Create the file path for the sub-playlist
+                let segmentsPath = CachingPlayerItem.hlsSegmentsPath(for: mediaID)
+                let subPlaylistPath = "\(segmentsPath)/\(resolution)/playlist.m3u8"
+                
+                // Ensure directory exists
+                let fileURL = URL(fileURLWithPath: subPlaylistPath)
+                try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                
+                // Save the file
+                try data.write(to: fileURL)
+                print("DEBUG: [LocalHTTPServer] Downloaded and saved sub-playlist: \(subPlaylistPath)")
+                
+                // Now serve the file
+                DispatchQueue.main.async { [weak self] in
+                    self?.serveCachedFile(filePath: subPlaylistPath, contentType: "application/vnd.apple.mpegurl", connection: connection)
+                }
+                
+            } catch {
+                print("DEBUG: [LocalHTTPServer] Failed to download sub-playlist on-demand: \(error)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.sendErrorResponse(connection: connection, statusCode: 500, message: "Sub-playlist download failed")
+                }
+            }
+        }
+    }
+    
+    /// Download TS segment on-demand when HTTP server receives request
+    private func downloadTSSegmentOnDemand(mediaID: String, resolution: String, segmentName: String, connection: NWConnection) {
+        print("DEBUG: [LocalHTTPServer] Starting on-demand TS segment download for mediaID: \(mediaID), resolution: \(resolution), segment: \(segmentName)")
+        
+        Task {
+            do {
+                // Construct the original URL for the TS segment
+                let originalURL = "http://125.229.161.122:8080/ipfs/\(mediaID)"
+                
+                // For TS segments, we need to use the base URL directly, not the resolved HLS URL
+                // The resolved HLS URL points to master.m3u8, but TS segments are at /resolution/segment.ts
+                let baseURL = URL(string: originalURL)!
+                let tsSegmentURL = baseURL.appendingPathComponent(resolution).appendingPathComponent(segmentName)
+                
+                print("DEBUG: [LocalHTTPServer] Downloading TS segment from: \(tsSegmentURL)")
+                
+                // Download the TS segment
+                let data = try await downloadData(from: tsSegmentURL)
+                
+                // Save the file
+                let segmentsPath = CachingPlayerItem.hlsSegmentsPath(for: mediaID)
+                let segmentPath = "\(segmentsPath)/\(resolution)/\(segmentName)"
+                let fileURL = URL(fileURLWithPath: segmentPath)
+                
+                // Ensure directory exists
+                try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
+                
+                // Save the file
+                try data.write(to: fileURL)
+                print("DEBUG: [LocalHTTPServer] Downloaded and saved TS segment: \(segmentPath)")
+                
+                // Now serve the file
+                DispatchQueue.main.async { [weak self] in
+                    self?.serveCachedFile(filePath: segmentPath, contentType: "video/mp2t", connection: connection)
+                }
+                
+            } catch {
+                print("DEBUG: [LocalHTTPServer] Failed to download TS segment on-demand: \(error)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.sendErrorResponse(connection: connection, statusCode: 500, message: "TS segment download failed")
+                }
+            }
         }
     }
     
@@ -290,6 +502,15 @@ class LocalHTTPServer {
         
         do {
             let data = try Data(contentsOf: fileURL)
+            
+            // Debug: Print content of master playlists
+            if contentType == "application/vnd.apple.mpegurl" && filePath.hasSuffix(".m3u8") {
+                if let content = String(data: data, encoding: .utf8) {
+                    print("DEBUG: [LocalHTTPServer] Master playlist content:\n\(content)")
+                } else {
+                    print("DEBUG: [LocalHTTPServer] Failed to decode master playlist as UTF-8")
+                }
+            }
             
             // Create HTTP response headers
             let contentLength = data.count
