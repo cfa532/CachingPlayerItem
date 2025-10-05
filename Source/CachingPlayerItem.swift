@@ -146,15 +146,19 @@ public final class CachingPlayerItem: AVPlayerItem {
         self.isHLS = isHLS
         self.mediaID = mediaID
 
-        // For HLS videos, use a custom scheme that will be handled by ResourceLoaderDelegate
+        // For HLS videos, use custom scheme that ResourceLoaderDelegate will handle
         let finalURL: URL
         if isHLS, let mediaID = mediaID {
-            // Use custom scheme for HLS - ResourceLoaderDelegate will handle the download and serve from local server
+            // Start LocalHTTPServer and register this media
+            LocalHTTPServer.shared.start()
+            LocalHTTPServer.shared.registerMedia(mediaID: mediaID, cachePath: saveFilePath)
+            
+            // Use custom scheme for HLS - ResourceLoaderDelegate will handle download and redirect to LocalHTTPServer
             guard var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
                 fatalError("CachingPlayerItem error: Failed to create custom scheme URL")
             }
             finalURL = urlWithCustomScheme
-            print("DEBUG: [CachingPlayerItem] Using custom scheme URL for HLS: \(finalURL.absoluteString)")
+            print("DEBUG: [CachingPlayerItem] Using custom scheme URL for HLS (will redirect to LocalHTTPServer): \(finalURL.absoluteString)")
         } else {
             // For progressive videos, use custom scheme
             guard var urlWithCustomScheme = url.withScheme(cachingPlayerItemScheme) else {
