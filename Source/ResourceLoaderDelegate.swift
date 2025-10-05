@@ -415,7 +415,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                     
                     // Construct the full URL by using the base URL without the filename, then appending the relative path
                     let baseURLWithoutFilename = url.deletingLastPathComponent().absoluteString
-                    let fullURLString = baseURLWithoutFilename + "/" + actualRelativePath
+                    let fullURLString = baseURLWithoutFilename + actualRelativePath
                     NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: fullURLString = \(fullURLString)")
                     
                     if let fullURL = URL(string: fullURLString) {
@@ -425,8 +425,10 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                         // Fallback to scheme conversion
                         if let components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false) {
                             let originalScheme = url.scheme ?? "http"
+                            let originalPort = url.port
                             var newComponents = components
                             newComponents.scheme = originalScheme
+                            newComponents.port = originalPort  // Preserve the port number
                             originalURL = newComponents.url ?? requestURL
                         } else {
                             originalURL = requestURL.withScheme(url.scheme ?? "http") ?? requestURL
@@ -434,11 +436,13 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                         NSLog("DEBUG: [CachingPlayerItem] handleHLSRequest: fallback converted to originalURL = \(originalURL.absoluteString)")
                     }
                 } else {
-                    // This is a direct request - convert scheme while preserving path
+                    // This is a direct request - convert scheme while preserving path and port
                     if let components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false) {
                         let originalScheme = url.scheme ?? "http"
+                        let originalPort = url.port
                         var newComponents = components
                         newComponents.scheme = originalScheme
+                        newComponents.port = originalPort  // Preserve the port number
                         originalURL = newComponents.url ?? requestURL
                     } else {
                         originalURL = requestURL.withScheme(url.scheme ?? "http") ?? requestURL
@@ -498,8 +502,8 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
             NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Serving cached playlist from \(cachePath)")
             NSLog("DEBUG: [CachingPlayerItem] handlePlaylistRequest: Playlist data size: \(playlistData.count) bytes")
             
-            // Modify the playlist to point to local server URLs
-            let modifiedPlaylistData = modifyPlaylistForLocalServer(playlistData, mediaID: mediaID)
+            // Modify the playlist to use custom scheme URLs so ResourceLoaderDelegate is called
+            let modifiedPlaylistData = modifyPlaylistForCustomScheme(playlistData, mediaID: mediaID)
             
             // Log first 200 characters of modified playlist content for debugging
             if let playlistString = String(data: modifiedPlaylistData, encoding: .utf8) {
@@ -746,9 +750,17 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         // Check if segment is cached
         if let segmentData = FileManager.default.contents(atPath: segmentPath) {
             NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Serving cached segment, size: \(segmentData.count) bytes")
+            NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: ===== IMMEDIATE NEXT LINE =====")
+            print("PRINT: [CachingPlayerItem] handleSegmentRequest: ===== CHECKPOINT 1 =====")
+            fflush(stdout)
             
             // Create proper HTTP response FIRST - this is critical for AVPlayer
-            if let response = HTTPURLResponse(url: requestURL, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
+            // Use resolvedURL instead of requestURL because requestURL has custom scheme
+            print("PRINT: [CachingPlayerItem] handleSegmentRequest: ===== CHECKPOINT 2 =====")
+            fflush(stdout)
+            NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: About to create HTTP response")
+            
+            let headerFields = [
                 "Content-Type": "video/mp2t",
                 "Content-Length": "\(segmentData.count)",
                 "Accept-Ranges": "bytes",
@@ -756,9 +768,17 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                 "Pragma": "no-cache",
                 "Expires": "0",
                 "Connection": "keep-alive"
-            ]) {
+            ]
+            
+            NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Creating HTTPURLResponse with URL: \(resolvedURL.absoluteString)")
+            let response = HTTPURLResponse(url: resolvedURL, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headerFields)
+            NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: HTTPURLResponse creation result: \(response != nil ? "SUCCESS" : "FAILED")")
+            
+            if let response = response {
                 loadingRequest.response = response
-                print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Set HTTP response headers for cached segment")
+                NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Set HTTP response headers for cached segment")
+            } else {
+                NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: HTTPURLResponse creation returned nil")
             }
             
             // Set proper Content-Type for video segments
@@ -766,13 +786,13 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                 contentInformationRequest.contentType = "video/mp2t" // MIME type for .ts files
                 contentInformationRequest.contentLength = Int64(segmentData.count)
                 contentInformationRequest.isByteRangeAccessSupported = true
-                print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Set Content-Type to video/mp2t, contentLength: \(segmentData.count)")
+                NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Set Content-Type to video/mp2t, contentLength: \(segmentData.count)")
             } else {
-                print("DEBUG: [CachingPlayerItem] handleSegmentRequest: No contentInformationRequest available - using HTTP headers only")
+                NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: No contentInformationRequest available - using HTTP headers only")
                 
                 // When contentInformationRequest is nil, we rely entirely on HTTP response headers
                 // The HTTP response headers we set above should be sufficient for AVPlayer
-                print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Relying on HTTP response headers for content information")
+                NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Relying on HTTP response headers for content information")
             }
             
             // Handle byte range requests if present
@@ -786,7 +806,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                     let endIndex = min(startIndex + Int(requestedLength), segmentData.count)
                     let rangeData = segmentData.subdata(in: startIndex..<endIndex)
                     
-                    print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Serving byte range \(startIndex)-\(endIndex-1) of \(segmentData.count)")
+                    NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Serving byte range \(startIndex)-\(endIndex-1) of \(segmentData.count)")
                     dataRequest.respond(with: rangeData)
                 } else {
                     // Full content request
@@ -797,7 +817,7 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
             return true
         }
         
-        print("DEBUG: [CachingPlayerItem] handleSegmentRequest: Segment not cached, downloading from \(originalURL.absoluteString)")
+        NSLog("DEBUG: [CachingPlayerItem] handleSegmentRequest: Segment not cached, downloading from \(originalURL.absoluteString)")
         // Download and cache segment
         downloadHLSSegment(from: originalURL, to: segmentPath, loadingRequest: loadingRequest)
         return true
@@ -839,8 +859,8 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
                 self.downloadHLSSegments(segments, originalPlaylist: playlistString)
             }
             
-            // Modify the playlist to point to local server URLs
-            let modifiedPlaylistData = self.modifyPlaylistForLocalServer(data, mediaID: self.mediaID ?? "")
+            // Modify the playlist to use custom scheme URLs so ResourceLoaderDelegate is called
+            let modifiedPlaylistData = modifyPlaylistForCustomScheme(data, mediaID: self.mediaID ?? "")
             
             // Respond with modified playlist data immediately
             if let dataRequest = loadingRequest.dataRequest {
@@ -1037,19 +1057,41 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         }
     }
     
-    private func modifyPlaylistForLocalServer(_ playlistData: Data, mediaID: String) -> Data {
+    private func modifyPlaylistForCustomScheme(_ playlistData: Data, mediaID: String) -> Data {
         guard let playlistString = String(data: playlistData, encoding: .utf8) else {
-            print("DEBUG: [CachingPlayerItem] modifyPlaylistForLocalServer: Failed to convert playlist data to string")
+            NSLog("DEBUG: [CachingPlayerItem] modifyPlaylistForCustomScheme: Failed to convert playlist data to string")
             return playlistData
         }
         
         var modifiedPlaylist = playlistString
         
-        // Get the local HTTP server URL
-        let localServerURL = "http://localhost:8080/media/\(mediaID)"
+        // Get the base URL without the filename to avoid double paths
+        let baseURL = url.deletingLastPathComponent()
         
-        // Replace relative segment URLs with local server URLs
-        // Pattern: segment000.ts -> http://localhost:8080/media/{mediaID}/segment000.ts
+        // Determine if this is a sub-playlist (contains resolution folder like 480p/720p)
+        // Check if the URL path contains a resolution folder before the filename
+        let urlPath = url.path
+        let isSubPlaylist = urlPath.contains("/480p/") || urlPath.contains("/720p/")
+        let resolutionFolder: String
+        if isSubPlaylist {
+            // Extract the resolution folder from the path
+            let pathComponents = urlPath.components(separatedBy: "/")
+            if let resolutionIndex = pathComponents.firstIndex(where: { $0 == "480p" || $0 == "720p" }) {
+                resolutionFolder = pathComponents[resolutionIndex]
+            } else {
+                resolutionFolder = ""
+            }
+        } else {
+            // For master playlists, segments should be treated as if they're in the default resolution folder (480p)
+            // This is because the working URL structure shows segments should be in resolution folders
+            resolutionFolder = "480p"
+        }
+        
+        NSLog("DEBUG: [CachingPlayerItem] modifyPlaylistForCustomScheme: urlPath = \(urlPath), isSubPlaylist = \(isSubPlaylist), resolutionFolder = \(resolutionFolder)")
+        
+        // Replace relative segment URLs with custom scheme URLs
+        // For sub-playlists: segment000.ts -> cachingPlayerItemScheme://originalHost:port/ipfs/{mediaID}/480p/segment000.ts
+        // For master playlists: segment000.ts -> cachingPlayerItemScheme://originalHost:port/ipfs/{mediaID}/segment000.ts
         let segmentPattern = #"^([^#\n\r]+\.ts)$"#
         let regex = try! NSRegularExpression(pattern: segmentPattern, options: [.anchorsMatchLines])
         
@@ -1059,14 +1101,20 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         for match in matches.reversed() {
             if let range = Range(match.range, in: modifiedPlaylist) {
                 let segmentName = String(modifiedPlaylist[range])
-                let localSegmentURL = "\(localServerURL)/\(segmentName)"
-                modifiedPlaylist.replaceSubrange(range, with: localSegmentURL)
-                print("DEBUG: [CachingPlayerItem] modifyPlaylistForLocalServer: Replaced \(segmentName) with \(localSegmentURL)")
+                let hostWithPort = baseURL.host ?? "localhost"
+                let port = baseURL.port != nil ? ":\(baseURL.port!)" : ""
+                
+                // Include the resolution folder in the path when it's not empty
+                let segmentPath = resolutionFolder.isEmpty ? "\(baseURL.path)/\(segmentName)" : "\(baseURL.path)/\(resolutionFolder)/\(segmentName)"
+                let customSchemeURL = "cachingPlayerItemScheme://\(hostWithPort)\(port)\(segmentPath)"
+                
+                modifiedPlaylist.replaceSubrange(range, with: customSchemeURL)
+                NSLog("DEBUG: [CachingPlayerItem] modifyPlaylistForCustomScheme: Replaced \(segmentName) with \(customSchemeURL)")
             }
         }
         
-        // Replace relative playlist URLs with local server URLs
-        // Pattern: 720p/playlist.m3u8 -> http://localhost:8080/media/{mediaID}/720p/playlist.m3u8
+        // Replace relative playlist URLs with custom scheme URLs
+        // Pattern: 720p/playlist.m3u8 -> cachingPlayerItemScheme://originalHost:port/ipfs/{mediaID}/720p/playlist.m3u8
         let playlistPattern = #"^([^#\n\r]+\.m3u8)$"#
         let playlistRegex = try! NSRegularExpression(pattern: playlistPattern, options: [.anchorsMatchLines])
         
@@ -1076,18 +1124,20 @@ extension ResourceLoaderDelegate: PendingDataRequestDelegate {
         for match in playlistMatches.reversed() {
             if let range = Range(match.range, in: modifiedPlaylist) {
                 let playlistName = String(modifiedPlaylist[range])
-                let localPlaylistURL = "\(localServerURL)/\(playlistName)"
-                modifiedPlaylist.replaceSubrange(range, with: localPlaylistURL)
-                print("DEBUG: [CachingPlayerItem] modifyPlaylistForLocalServer: Replaced \(playlistName) with \(localPlaylistURL)")
+                let hostWithPort = baseURL.host ?? "localhost"
+                let port = baseURL.port != nil ? ":\(baseURL.port!)" : ""
+                let customSchemeURL = "cachingPlayerItemScheme://\(hostWithPort)\(port)\(baseURL.path)/\(playlistName)"
+                modifiedPlaylist.replaceSubrange(range, with: customSchemeURL)
+                NSLog("DEBUG: [CachingPlayerItem] modifyPlaylistForCustomScheme: Replaced \(playlistName) with \(customSchemeURL)")
             }
         }
         
         guard let modifiedData = modifiedPlaylist.data(using: .utf8) else {
-            print("DEBUG: [CachingPlayerItem] modifyPlaylistForLocalServer: Failed to convert modified playlist to data")
+            NSLog("DEBUG: [CachingPlayerItem] modifyPlaylistForCustomScheme: Failed to convert modified playlist to data")
             return playlistData
         }
         
-        print("DEBUG: [CachingPlayerItem] modifyPlaylistForLocalServer: Modified playlist for local server")
+        NSLog("DEBUG: [CachingPlayerItem] modifyPlaylistForCustomScheme: Modified playlist for custom scheme")
         return modifiedData
     }
     
